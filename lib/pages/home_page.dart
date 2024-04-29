@@ -117,7 +117,7 @@ class HomePage extends StatelessWidget {
               onPressed: () {
                 context.read<WikipediaBloc>().add(CheckConnectivity());
               },
-              child: const Text('You are offline, connect to network'),
+              child: const Text('You are offline, click to refresh'),
             )
           : TextField(
               decoration: const InputDecoration(
