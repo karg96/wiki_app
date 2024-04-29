@@ -24,3 +24,5 @@ class GetContent extends BlocEvent {
   @override
   List<Object?> get props => [title];
 }
+
+class CheckConnectivity extends BlocEvent {}

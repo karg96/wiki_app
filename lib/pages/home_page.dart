@@ -1,15 +1,18 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:wiki_app/bloc/bloc_event.dart';
 import 'package:wiki_app/bloc/bloc_state.dart';
 import 'package:wiki_app/bloc/wikipedia_bloc.dart';
+import 'package:wiki_app/data/model/search_result.dart' as result;
+import 'package:wiki_app/pages/web_page.dart';
+
+import '../core_ui/cache_network_image_with_placeholder.dart';
 
 class HomePage extends StatelessWidget {
   HomePage({super.key});
 
-  late WebViewController _webViewController;
+  late WebViewController _webViewController = WebViewController();
 
   @override
   Widget build(BuildContext context) {
@@ -21,96 +24,55 @@ class HomePage extends StatelessWidget {
       body: BlocListener<WikipediaBloc, BlocState>(
         listener: (context, state) {
           if (state is ContentSuccess) {
-            _webViewController = WebViewController()
-              ..enableZoom(true)
-              ..setJavaScriptMode(JavaScriptMode.unrestricted)
-              ..loadHtmlString("""
-      <!DOCTYPE html>
-        <html>
-          <head><meta name="viewport" content="width=device-width, initial-scale=0.7"></head>
-          <body style='"margin: 0; padding: 0;'>
-            ${state.extract}
-          </body>
-        </html>
-      """);
+            _iniWebView(state);
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => WebPage(
+                        page: state.page,
+                        webViewController: _webViewController))).then((value) =>
+                context.read<WikipediaBloc>().add(CheckConnectivity()));
           }
         },
         child: BlocBuilder<WikipediaBloc, BlocState>(
           builder: (context, state) {
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        hintText: 'Search Wikipedia',
-                        prefixIcon: Icon(Icons.search),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(16),
-                      ),
-                      onChanged: (query) {
-                        if (query.length >= 2) {
-                          context
-                              .read<WikipediaBloc>()
-                              .add(SearchEvent(query: query));
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (state is LoadingState) ...[
-                    const Center(
-                        child: SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator()))
-                  ] else if (state is QuerySuccessState) ...[
-                    Expanded(
-                      child: ListView.builder(
-                          itemCount: state.searchResult.query?.pages?.length,
-                          itemBuilder: (context, index) {
-                            final item =
-                                state.searchResult.query?.pages?[index];
-                            return Card(
-                              child: ListTile(
-                                leading: SizedBox(
-                                    width: 40,
-                                    height: 40,
-                                    child: item?.thumbnail?.source != null
-                                        ? CachedNetworkImage(
-                                            imageUrl:
-                                                item?.thumbnail?.source ?? "",
-                                            placeholder: (context, url) =>
-                                                const CircularProgressIndicator(),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(Icons.error),
-                                          )
-                                        : const Placeholder()),
-                                // Use a placeholder if thumbnail is null
-                                title: Text(item?.title ?? "Not found"),
-                                subtitle: Text(item?.terms?.description[0] ??
-                                    'No description found'),
-                                onTap: () {
-                                  context.read<WikipediaBloc>().add(
-                                      GetContent(title: item?.title ?? ''));
-                                },
-                              ),
-                            );
-                          }),
-                    )
-                  ] else if (state is ContentSuccess) ...[
-                    Expanded(
-                        child: WebViewWidget(controller: _webViewController))
-                  ] else if (state is ErrorState) ...[
-                    Center(child: Text(state.message))
-                  ]
-                ],
+            return GestureDetector(
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    _searchBar(context, state),
+                    const SizedBox(height: 16),
+                    if (state is LoadingState) ...[
+                      const Center(
+                          child: SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator()))
+                    ] else if (state is QuerySuccessState ||
+                        state is OfflineState) ...[
+                      Expanded(
+                        child: ListView.builder(
+                            itemCount: (state as dynamic)
+                                    .searchResult
+                                    .query
+                                    ?.pages
+                                    ?.length ??
+                                0,
+                            itemBuilder: (context, index) {
+                              final item = (state as dynamic)
+                                  .searchResult
+                                  .query
+                                  ?.pages?[index];
+                              return _searchResultItem(item, context);
+                            }),
+                      )
+                    ] else if (state is ErrorState) ...[
+                      Center(child: Text(state.message))
+                    ]
+                  ],
+                ),
               ),
             );
           },
@@ -118,55 +80,73 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
-}
 
-class SearchBar extends StatefulWidget {
-  final void Function(String) onSearchTextChanged;
-
-  const SearchBar({Key? key, required this.onSearchTextChanged})
-      : super(key: key);
-
-  @override
-  _SearchBarState createState() => _SearchBarState();
-}
-
-class _SearchBarState extends State<SearchBar> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_onSearchTextChanged);
+  Card _searchResultItem(result.Page? item, BuildContext context) {
+    return Card(
+      child: ListTile(
+        key: Key(item?.pageId.toString() ?? ''),
+        leading: SizedBox(width: 50, height: 50, child: _placeImage(item)),
+        // Use a placeholder if thumbnail is null
+        title: Text(item?.title ?? "Not found"),
+        subtitle: Text(item?.terms?.description[0] ?? 'No description found'),
+        onTap: () {
+          context
+              .read<WikipediaBloc>()
+              .add(GetContent(title: item?.title ?? ''));
+        },
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  StatelessWidget _placeImage(result.Page? item) {
+    return CachedNetworkImageWithPlaceholder(
+      imageUrl: item?.thumbnail?.source ?? "",
+      height: item?.thumbnail?.height.toDouble(),
+      width: item?.thumbnail?.width.toDouble(),
+    );
   }
 
-  void _onSearchTextChanged() {
-    if (_controller.text.length >= 2) {
-      widget.onSearchTextChanged(_controller.text);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Container _searchBar(BuildContext context, BlocState state) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: TextField(
-        controller: _controller,
-        decoration: const InputDecoration(
-          hintText: 'Search Wikipedia',
-          prefixIcon: Icon(Icons.search),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.all(16),
-        ),
-      ),
+      child: state is OfflineState
+          ? ElevatedButton(
+              onPressed: () {
+                context.read<WikipediaBloc>().add(CheckConnectivity());
+              },
+              child: const Text('You are offline, connect to network'),
+            )
+          : TextField(
+              decoration: const InputDecoration(
+                hintText: 'Search Wikipedia',
+                prefixIcon: Icon(Icons.search),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.all(16),
+              ),
+              onChanged: (query) {
+                if (query.length >= 2) {
+                  context.read<WikipediaBloc>().add(SearchEvent(query: query));
+                }
+              },
+            ),
     );
+  }
+
+  void _iniWebView(ContentSuccess state) {
+    _webViewController = WebViewController()
+      ..enableZoom(true)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadHtmlString("""
+      <!DOCTYPE html>
+        <html>
+          <head><meta name="viewport" content="width=device-width, initial-scale=0.7"></head>
+          <body style='"margin: 0; padding: 0;'>
+            ${state.page.extract}
+              </body>
+            </html>
+          """);
   }
 }

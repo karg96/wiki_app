@@ -10,13 +10,13 @@ class SearchResult {
 }
 
 class Query {
-  final List<Page>? pages;
-  const Query({this.pages});
+  final List<Page?>? pages;
+  const Query({required this.pages});
   factory Query.fromJson(Map<String, dynamic> json) {
     return Query(
-      pages: (json['pages'] as List<dynamic>?)
+      pages: json['pages']!=null ? (json['pages'] as List<dynamic>?)
           ?.map((page) => Page.fromJson(page))
-          .toList() ?? []
+          .toList() ?? []: []
     );
 
   }

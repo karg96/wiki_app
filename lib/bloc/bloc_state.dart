@@ -22,12 +22,21 @@ class QuerySuccessState extends BlocState {
 }
 
 class ContentSuccess extends BlocState {
-  final String extract;
+  final Page page;
 
-  const ContentSuccess({required this.extract});
+  const ContentSuccess({required this.page});
 
   @override
-  List<Object?> get props => [extract];
+  List<Object?> get props => [page];
+}
+
+class OfflineState extends BlocState {
+  final SearchResult searchResult;
+
+  const OfflineState({required this.searchResult});
+
+  @override
+  List<Object?> get props => [searchResult];
 }
 
 class ErrorState extends BlocState {
